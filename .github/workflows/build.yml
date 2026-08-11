@@ -41,7 +41,7 @@ jobs:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: firmware
-          command: idf.py build && idf.py merge-bin -o build/esp-swd-merged.bin
+          command: idf.py build && idf.py merge-bin -o esp-swd-merged.bin
 
       - name: Determine firmware version
         id: version
