@@ -10,6 +10,8 @@ OTW firmware updates abort with `file error 0x44`. The firmware also works as a
 general SWD tool. It does MEM-AP memory read/write, core halt and reset, and a
 reboot-into-bootloader handoff.
 
+The register-level detail is in [REGISTERS.md](REGISTERS.md).
+
 ## Wiring
 
 The S3 and ZG23 share GND and 3.3V on the ZWA-2 board. Only two jumpers are
