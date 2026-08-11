@@ -1,0 +1,4 @@
+# Console over the native USB-Serial-JTAG, so the same USB-C port that flashes
+# the board also carries the REPL. No external UART needed.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
