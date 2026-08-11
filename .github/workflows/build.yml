@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # main.c sets repl_config.max_cmdline_args, which the console REPL config
       # gained after the v5.5.1 tag, so build against the rolling release-v5.5
@@ -65,7 +65,7 @@ jobs:
           md5sum upload/esp-swd_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/esp-swd_${SUFFIX}-merged.bin.md5
 
       - name: Upload firmware package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: esp-swd_${{ env.SUFFIX }}
           path: upload/*.*
@@ -82,7 +82,7 @@ jobs:
 
     steps:
       - name: Download firmware package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.package }}
           path: upload
