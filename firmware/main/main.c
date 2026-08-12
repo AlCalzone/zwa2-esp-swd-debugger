@@ -56,8 +56,8 @@ static int cmd_read(int argc, char **argv)
     if (swd_halt() != SWD_OK) printf("warning: halt failed, reading a running core\n");
 
     token_read_t t;
-    token_state_t state;
-    swd_result_t r = zg23_read_tokens(&t, &state);
+    bool all_blank;
+    swd_result_t r = zg23_read_tokens(&t, &all_blank);
     if (r != SWD_OK) {
         printf("read failed: %s\n", swd_strerror(r));
         return 1;
@@ -65,17 +65,7 @@ static int cmd_read(int argc, char **argv)
     print_bytes("SIGNED_BOOTLOADER_KEY_X", TOK_X_ADDR, t.sign, 0, 32);
     print_bytes("SIGNED_BOOTLOADER_KEY_Y", TOK_Y_ADDR, t.sign, 32, 32);
     print_bytes("SECURE_BOOTLOADER_KEY", TOK_ENC_ADDR, t.enc, 2, 16);
-    switch (state) {
-    case TOKENS_MATCH:
-        printf("state: MATCH - byte order on silicon matches the plan\n");
-        break;
-    case TOKENS_BLANK:
-        printf("state: BLANK - all 0xFF, this is a bricked board\n");
-        break;
-    case TOKENS_DIFFER:
-        printf("state: DIFFERS - neither the expected keys nor blank\n");
-        break;
-    }
+    printf("state: %s\n", all_blank ? "BLANK - all 0xFF" : "POPULATED");
     return 0;
 }
 
@@ -137,30 +127,9 @@ static int cmd_erase(int argc, char **argv)
         return 1;
     }
     token_read_t t;
-    token_state_t state;
-    if (zg23_read_tokens(&t, &state) == SWD_OK)
-        printf("post-erase token state: %s\n",
-               state == TOKENS_BLANK ? "BLANK" : state == TOKENS_MATCH ? "MATCH" : "DIFFERS");
-    return 0;
-}
-
-static int cmd_write(int argc, char **argv)
-{
-    if (argc < 2 || strcmp(argv[1], "confirm") != 0) {
-        printf("This writes the bootloader key tokens and cannot be undone.\n");
-        printf("It only proceeds when all three regions read 0xFF.\n");
-        printf("Type: write confirm\n");
-        return 1;
-    }
-    if (!ensure_connected()) return 1;
-
-    bool verified = false;
-    swd_result_t r = zg23_write_tokens(write_log, &verified);
-    if (r != SWD_OK || !verified) {
-        printf("write did not complete cleanly: %s\n", swd_strerror(r));
-        return 1;
-    }
-    printf("done\n");
+    bool all_blank;
+    if (zg23_read_tokens(&t, &all_blank) == SWD_OK)
+        printf("post-erase token state: %s\n", all_blank ? "BLANK" : "POPULATED");
     return 0;
 }
 
@@ -215,13 +184,12 @@ static void register_cmds(void)
 {
     const esp_console_cmd_t cmds[] = {
         {.command = "id",    .help = "connect and print DPIDR and AP IDR", .func = cmd_id},
-        {.command = "read",  .help = "read and classify the key tokens", .func = cmd_read},
+        {.command = "read",  .help = "read the token regions and report blank/populated", .func = cmd_read},
         {.command = "dump",  .help = "dump <hex_addr> <word_count>", .func = cmd_dump},
         {.command = "halt",  .help = "halt the target core", .func = cmd_halt},
         {.command = "reset", .help = "reset and halt the target core", .func = cmd_reset},
         {.command = "run", .help = "reset and let the target run (exit bootloader)", .func = cmd_run},
-        {.command = "write", .help = "restore blank tokens (needs: write confirm)", .func = cmd_write},
-        {.command = "wr", .help = "wr <hexaddr> <hexword...> : write a flash span in page 63", .func = cmd_wr},
+        {.command = "wr", .help = "wr <hexaddr> <hexword...> : write a blank flash span in page 63", .func = cmd_wr},
         {.command = "erase", .help = "erase lockbits page 63 (needs: erase confirm)", .func = cmd_erase},
         {.command = "bootloader", .help = "reset the target into its OTW bootloader", .func = cmd_bootloader},
     };

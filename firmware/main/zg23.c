@@ -1,21 +1,8 @@
 #include "zg23.h"
 
-#include <string.h>
 #include <stdio.h>
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
-
-// Little-endian words in write order, from swd-token-recovery.md. Reading these
-// spans back byte-for-byte reproduces the big-endian X, Y and encryption key.
-const uint32_t k_sign_span[SIGN_SPAN_WORDS] = {
-    0x5DF190A3, 0x81C683C6, 0xBC2C2336, 0x9C5FBC09,
-    0x02A7AC6A, 0x8C0DB20E, 0xF1C47E51, 0xA0A8488A,
-    0x59AB55FC, 0x19B500A9, 0xFBBAE79B, 0xC8BC771B,
-    0x5FF18686, 0xACFEF3FD, 0x7859EEDE, 0x7D11B6C1,
-};
-const uint32_t k_enc_span[ENC_SPAN_WORDS] = {
-    0x8F7FFFFF, 0xB37939E5, 0xFC56C51B, 0xF4AF31B1, 0xFFFF1424,
-};
 
 // --- MSC and clock registers (EFR32ZG23) ------------------------------------
 
@@ -70,21 +57,15 @@ static bool span_is_ff(const uint32_t *w, int n)
     return true;
 }
 
-swd_result_t zg23_read_tokens(token_read_t *out, token_state_t *state)
+swd_result_t zg23_read_tokens(token_read_t *out, bool *all_blank)
 {
     swd_result_t r = swd_mem_read_block(SIGN_SPAN_ADDR, out->sign, SIGN_SPAN_WORDS);
     if (r != SWD_OK) return r;
     r = swd_mem_read_block(ENC_SPAN_ADDR, out->enc, ENC_SPAN_WORDS);
     if (r != SWD_OK) return r;
 
-    bool sign_match = memcmp(out->sign, k_sign_span, sizeof(k_sign_span)) == 0;
-    bool enc_match = memcmp(out->enc, k_enc_span, sizeof(k_enc_span)) == 0;
-    bool all_ff = span_is_ff(out->sign, SIGN_SPAN_WORDS) &&
-                  span_is_ff(out->enc, ENC_SPAN_WORDS);
-
-    if (sign_match && enc_match) *state = TOKENS_MATCH;
-    else if (all_ff) *state = TOKENS_BLANK;
-    else *state = TOKENS_DIFFER;
+    *all_blank = span_is_ff(out->sign, SIGN_SPAN_WORDS) &&
+                 span_is_ff(out->enc, ENC_SPAN_WORDS);
     return SWD_OK;
 }
 
@@ -222,43 +203,6 @@ static swd_result_t msc_end(zg23_log_fn log_line)
     return swd_mem_write32(MSC_LOCK, 0);
 }
 
-swd_result_t zg23_write_tokens(zg23_log_fn log_line, bool *verified_out)
-{
-    char buf[96];
-    *verified_out = false;
-
-    token_read_t before;
-    token_state_t state;
-    STEP(swd_halt(), "halt");
-    STEP(zg23_read_tokens(&before, &state), "read tokens");
-    if (state == TOKENS_MATCH) {
-        log_line("tokens already correct, nothing to do");
-        *verified_out = true;
-        return SWD_OK;
-    }
-    if (state != TOKENS_BLANK) {
-        log_line("regions are neither blank nor the expected keys, refusing to write");
-        return SWD_FAULT;
-    }
-
-    STEP(msc_begin(log_line), "prepare MSC");
-    log_line("writing sign key span (X||Y)");
-    STEP(write_burst(SIGN_SPAN_ADDR, k_sign_span, SIGN_SPAN_WORDS), "sign burst");
-    log_line("writing encryption key span");
-    STEP(write_burst(ENC_SPAN_ADDR, k_enc_span, ENC_SPAN_WORDS), "enc burst");
-    STEP(msc_end(log_line), "finish MSC");
-
-    token_read_t after;
-    STEP(zg23_read_tokens(&after, &state), "read back");
-    if (state != TOKENS_MATCH) {
-        log_line("READBACK MISMATCH: restore failed, tokens are not correct");
-        return SWD_FAULT;
-    }
-    log_line("VERIFIED: tokens read back correct");
-    *verified_out = true;
-    return SWD_OK;
-}
-
 swd_result_t zg23_erase_page(uint32_t page_addr, zg23_log_fn log_line)
 {
     char buf[96];
@@ -296,6 +240,17 @@ swd_result_t zg23_write_span(uint32_t addr, const uint32_t *words, int n,
 {
     char buf[96];
     STEP(swd_halt(), "halt");
+
+    // Flash only clears bits, so refuse unless the whole target range is blank.
+    uint32_t cur[64];
+    STEP(swd_mem_read_block(addr, cur, n), "pre-read");
+    for (int i = 0; i < n; i++) {
+        if (cur[i] != 0xFFFFFFFFu) {
+            log_line("target range is not blank, refusing to write");
+            return SWD_FAULT;
+        }
+    }
+
     STEP(msc_begin(log_line), "prepare MSC");
     STEP(write_burst(addr, words, n), "burst");
     STEP(msc_end(log_line), "finish MSC");

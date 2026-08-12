@@ -77,24 +77,24 @@ Open the console with any serial terminal, such as `idf.py -C firmware -p
 At the `swd>` prompt:
 
 - **`id`** — bring up SWD and print DPIDR and the AP IDR.
-- **`read`** — read the three key-token regions and classify them MATCH, BLANK, or
-  DIFFERS.
+- **`read`** — read the three token regions, print them, and report BLANK or
+  POPULATED.
 - **`dump <hexaddr> <words>`** — read up to 64 words over the MEM-AP.
 - **`halt`** — halt the core.
 - **`reset`** — reset the core and halt it at the vector.
 - **`run`** — reset the core and let it run, to leave the bootloader for the app.
-- **`write confirm`** — restore the key tokens. It refuses unless all three regions
-  read `0xFF`.
 - **`wr <hexaddr> <word...>`** — write a word span in page 63 through one MSC burst,
-  then verify.
+  then verify. It refuses unless the range reads `0xFF`.
 - **`erase confirm`** — erase the whole 8 KB lockbits page 63.
 - **`bootloader`** — reset the ZG23 into its OTW communication mode.
 
 Details:
 
-- **`write` vs `wr`:** `write` carries the fixed correct token values and is gated
-  to a blank page. `wr` writes whatever words you pass. It checks only page-63
-  bounds and alignment. It is the raw primitive under `write`.
+- **The firmware holds no key values.** It writes whatever the host sends. The
+  host supplies the token values and their addresses. `firmware/write_tokens.py`
+  does that from a key file you provide.
+- **`wr` refuses unless the target range is blank.** Flash only clears bits, so
+  write to a bricked board or a freshly erased range.
 - **`erase`** blanks the tokens along with the DSK and QR data in the same page.
   Use it to test the write path on an expendable board. Keep it out of recovery.
 - **`bootloader`** writes the Gecko reset cause `0xF00F0202` to the first RAM word
@@ -106,28 +106,32 @@ Details:
 
 ## Host helpers
 
+- **`firmware/write_tokens.py <port> <keys-file>`** — write the key tokens from a
+  key file you supply. The repo ships no keys.
 - **`firmware/zwa2_bootloader.py <port>`** — knock the S3 into ROM download mode.
 - **`firmware/dump_flash.py <port> <hexaddr> <bytes> <out.bin>`** — dump a flash
   range to a file over the console.
 - **`firmware/restore_flash.py <port> <backup.bin> <hexbase>`** — write a page
   backup into cells that read blank on the device, through `wr`.
 
+The key file is not in this repo. Its format is documented at the top of
+`write_tokens.py`.
+
 ## Recovery procedure
 
 1. Flash this firmware onto the target's S3 and add the two jumpers.
 2. Run `read`. A bricked board reads BLANK.
-3. Run `write confirm`. It writes both spans and reads back VERIFIED.
+3. Write the tokens from your key file: `firmware/write_tokens.py <port> <keys>`.
+   `wr` refuses unless the range is blank, so a bricked board takes them straight.
 4. Confirm the fix with an OTW update of controller firmware 1.2.0. Success is an
    update that no longer aborts with `0x44`.
 
 ## Safety
 
-`write` reads all three regions first. It proceeds only if every byte is `0xFF`. A
-populated token means the keys are already correct. It can also mean page 63 holds
-something this procedure cannot fix. Either way `write` leaves the board untouched.
-Every flash op reads back and reports a mismatch loudly. `erase` and `wr` have no
-such guard. They can destroy manufacturing data. Use them only on boards you can
-restore.
+`wr` reads its target range first. It proceeds only if every byte is `0xFF`. It
+then reads back and reports a mismatch loudly. This keeps it from clearing bits in
+a populated token. `erase` has no such guard. It blanks all of page 63, including
+the DSK and QR data. Use it only on boards you can restore.
 
 ## Validation ladder
 

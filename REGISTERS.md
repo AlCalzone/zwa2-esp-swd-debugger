@@ -76,7 +76,7 @@ needed.
    `CSYSPWRUPREQ`. Wait for the ack bits.
 3. Select the AHB-AP and set `CSW` to 32-bit accesses.
 4. Halt the core with `0xA05F0003` to `DHCSR`.
-5. Read the three token regions. Write only if every byte is `0xFF`.
+5. Read the target range. Write only if every byte is `0xFF`.
 6. Detect the MSC alias, then enable the MSC clock with bit 16 in `CLKEN1`.
 7. Unlock the MSC with `0x00001B71` to `LOCK`. Confirm `STATUS.REGLOCK` is clear.
 8. Check `PAGELOCK1` bit 31. If set, reset-and-halt, then re-run from step 6.
@@ -89,7 +89,8 @@ needed.
     - write `WRITECMD.WRITEEND`.
     - wait for `STATUS.BUSY` and `STATUS.PENDING` to clear, then check again.
 11. Clear `WRITECTRL.WREN` and write `0` to `LOCK`.
-12. Read all three regions back and compare against the expected values.
+12. Read the range back to confirm the write landed. The host compares it to the
+    values it meant to write.
 
 A page erase replaces steps 9–11 with `WRITECTRL.WREN`, `ADDRB` = page base,
 `WRITECMD.ERASEPAGE`, then a wait for `BUSY` and `PENDING` to clear.
