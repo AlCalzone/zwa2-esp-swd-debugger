@@ -32,8 +32,12 @@ needed, from the S3's broken-out GPIOs to the SWD header:
 
 ## Build
 
-ESP-IDF 5.5, target esp32s3. ESP-IDF installs against Python 3.9 to 3.13. A system
-Python 3.14 will not work. Run `install.sh` under a 3.12 or 3.13 interpreter.
+ESP-IDF from the `release/v5.5` branch (or v5.5.2 once released), target esp32s3.
+The tagged `v5.5` and `v5.5.1` releases will not build. The REPL config field
+`max_cmdline_args` used in `main.c` landed on `release/v5.5` after the v5.5.1 tag.
+
+ESP-IDF installs against Python 3.9 to 3.13. A system Python 3.14 will not work.
+Run `install.sh` under a 3.12 or 3.13 interpreter.
 
 ```bash
 . ~/esp/esp-idf/export.sh
