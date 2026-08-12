@@ -31,17 +31,18 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v7
 
-      # main.c sets repl_config.max_cmdline_args, which the console REPL config
-      # gained after the v5.5.1 tag, so build against the rolling release-v5.5
-      # branch image until v5.5.2 ships it in a fixed tag. merge-bin folds the
-      # bootloader, partition table and app into one image flashable at 0x0.
       - name: Build firmware
         uses: espressif/esp-idf-ci-action@v1.2.0
         with:
+          # main.c sets repl_config.max_cmdline_args, which the console REPL
+          # config gained after the v5.5.1 tag, so build against the rolling
+          # release-v5.5 branch image until v5.5.2 ships it in a fixed tag.
           esp_idf_version: release-v5.5
           target: esp32s3
           path: firmware
-          command: idf.py build && idf.py merge-bin -o esp-swd-merged.bin
+          # merge-bin folds the bootloader, partition table and app into one
+          # image flashable at 0x0.
+          command: idf.py build && idf.py merge-bin -o zwa2-esp-swd-debugger-merged.bin
 
       - name: Determine firmware version
         id: version
@@ -52,22 +53,22 @@ jobs:
             SUFFIX="$(git rev-parse --short HEAD)"
           fi
           echo "SUFFIX=${SUFFIX}" >> $GITHUB_ENV
-          echo "package=esp-swd_${SUFFIX}" >> $GITHUB_OUTPUT
+          echo "package=zwa2-esp-swd-debugger_${SUFFIX}" >> $GITHUB_OUTPUT
 
       - name: Prepare files for upload
         run: |
           mkdir -p upload
-          cp firmware/build/esp-swd-merged.bin upload/esp-swd_${SUFFIX}-merged.bin
-          cp firmware/build/bootloader/bootloader.bin upload/esp-swd_${SUFFIX}-bootloader.bin
-          cp firmware/build/partition_table/partition-table.bin upload/esp-swd_${SUFFIX}-partition-table.bin
-          cp firmware/build/swd_recover.bin upload/esp-swd_${SUFFIX}-app.bin
-          sha256sum upload/esp-swd_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/esp-swd_${SUFFIX}-merged.bin.sha256
-          md5sum upload/esp-swd_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/esp-swd_${SUFFIX}-merged.bin.md5
+          cp firmware/build/zwa2-esp-swd-debugger-merged.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin
+          cp firmware/build/bootloader/bootloader.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-bootloader.bin
+          cp firmware/build/partition_table/partition-table.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-partition-table.bin
+          cp firmware/build/swd_recover.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-app.bin
+          sha256sum upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin.sha256
+          md5sum upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin.md5
 
       - name: Upload firmware package
         uses: actions/upload-artifact@v7
         with:
-          name: esp-swd_${{ env.SUFFIX }}
+          name: zwa2-esp-swd-debugger_${{ env.SUFFIX }}
           path: upload/*.*
 
   # Separate job so the build job, which runs code from pull requests, keeps a
