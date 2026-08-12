@@ -1,0 +1,94 @@
+name: "Build firmware"
+
+# Run this job on all pushes to main, for pull requests
+# as well as published releases
+on:
+  push:
+    branches:
+      # This avoids having duplicate builds in non-forked PRs
+      - "main"
+  release:
+    types:
+      - published
+  pull_request: {}
+
+# Cancel previous PR/branch runs when a new commit is pushed
+concurrency:
+  group: "build-firmware-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    outputs:
+      package: ${{ steps.version.outputs.package }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Build firmware
+        uses: espressif/esp-idf-ci-action@v1.2.0
+        with:
+          # main.c sets repl_config.max_cmdline_args, which the console REPL
+          # config gained after the v5.5.1 tag, so build against the rolling
+          # release-v5.5 branch image until v5.5.2 ships it in a fixed tag.
+          esp_idf_version: release-v5.5
+          target: esp32s3
+          path: firmware
+          # merge-bin folds the bootloader, partition table and app into one
+          # image flashable at 0x0.
+          command: idf.py build && idf.py merge-bin -o zwa2-esp-swd-debugger-merged.bin
+
+      - name: Determine firmware version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            SUFFIX="${GITHUB_REF_NAME#v}"
+          else
+            SUFFIX="$(git rev-parse --short HEAD)"
+          fi
+          echo "SUFFIX=${SUFFIX}" >> $GITHUB_ENV
+          echo "package=zwa2-esp-swd-debugger_${SUFFIX}" >> $GITHUB_OUTPUT
+
+      - name: Prepare files for upload
+        run: |
+          mkdir -p upload
+          cp firmware/build/zwa2-esp-swd-debugger-merged.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin
+          cp firmware/build/bootloader/bootloader.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-bootloader.bin
+          cp firmware/build/partition_table/partition-table.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-partition-table.bin
+          cp firmware/build/swd_recover.bin upload/zwa2-esp-swd-debugger_${SUFFIX}-app.bin
+          sha256sum upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin.sha256
+          md5sum upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin | cut -d" " -f1 > upload/zwa2-esp-swd-debugger_${SUFFIX}-merged.bin.md5
+
+      - name: Upload firmware package
+        uses: actions/upload-artifact@v7
+        with:
+          name: zwa2-esp-swd-debugger_${{ env.SUFFIX }}
+          path: upload/*.*
+
+  # Separate job so the build job, which runs code from pull requests, keeps a
+  # read-only token.
+  release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware package
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.package }}
+          path: upload
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: upload/*.*
